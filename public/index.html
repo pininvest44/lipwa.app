@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bulk STK Push Dashboard</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f4f6f8; margin: 0; padding: 24px; color: #1a202c; }
+    .container { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h2 { margin-top: 0; font-size: 1.25rem; color: #2d3748; }
+    label { display: block; font-weight: 600; font-size: 0.875rem; margin-bottom: 6px; }
+    input, textarea, button { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #cbd5e0; border-radius: 6px; }
+    textarea { height: 140px; resize: vertical; font-family: monospace; }
+    button { background: #2563eb; color: white; border: none; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+    .badge-success { background: #dcfce7; color: #166534; }
+    .badge-fail { background: #fee2e2; color: #991b1b; }
+    .log-box { background: #0f172a; color: #f8fafc; padding: 12px; border-radius: 6px; height: 380px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; }
+    .log-entry { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+    .rate-info { font-size: 0.8rem; color: #64748b; margin-top: -8px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Input Form -->
+  <div class="card">
+    <h2>Bulk STK Push Runner</h2>
+    <form id="stkForm">
+      <label for="numbersText">Phone Numbers (One per line or comma-separated)</label>
+      <textarea id="numbersText" placeholder="0712345678&#10;254798765432" required></textarea>
+
+      <label for="amount">Amount (KES)</label>
+      <input type="number" id="amount" placeholder="100" min="1" required>
+
+      <label for="reference">Reference / Customer Description</label>
+      <input type="text" id="reference" placeholder="Bulk Subscription Renewal">
+
+      <div class="rate-info">⚡ Throttled to <strong>9 requests per minute</strong> (~6.6s delay between pushes).</div>
+
+      <button type="submit" id="submitBtn">Start Bulk Execution</button>
+    </form>
+  </div>
+
+  <!-- Real-Time Console Logging -->
+  <div class="card">
+    <h2>Execution Logs</h2>
+    <div id="logBox" class="log-box">
+      <div class="log-entry" style="color: #94a3b8;">System ready. Submit numbers to start job...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('stkForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const logBox = document.getElementById('logBox');
+
+  // Set up Server-Sent Events stream
+  const eventSource = new EventSource('/api/events');
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    appendLog(data);
+  };
+
+  function appendLog(data) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    const timestamp = new Date().toLocaleTimeString();
+
+    if (data.type === 'START') {
+      entry.innerHTML = `<span style="color: #38bdf8;">[${timestamp}] ${data.message}</span>`;
+    } else if (data.type === 'SUCCESS') {
+      entry.innerHTML = `[${timestamp}] (${data.index}/${data.total}) <span class="badge badge-success">SUCCESS</span> ${data.phone}`;
+    } else if (data.type === 'FAILURE') {
+      entry.innerHTML = `[${timestamp}] (${data.index}/${data.total}) <span class="badge badge-fail">FAILED</span> ${data.phone}<br><span style="color:#f87171; font-size:0.75rem;">Err: ${JSON.stringify(data.error)}</span>`;
+    } else if (data.type === 'COMPLETE') {
+      entry.innerHTML = `<span style="color: #4ade80;">[${timestamp}] ${data.message}</span>`;
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'Start Bulk Execution';
+    }
+
+    logBox.appendChild(entry);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Processing Queue...';
+
+    const payload = {
+      numbersText: document.getElementById('numbersText').value,
+      amount: document.getElementById('amount').value,
+      reference: document.getElementById('reference').value
+    };
+
+    try {
+      const res = await fetch('/api/bulk-stk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Request failed');
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Start Bulk Execution';
+      }
+    } catch (err) {
+      alert('Failed to connect to the server.');
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'Start Bulk Execution';
+    }
+  });
+</script>
+
+</body>
+</html>
