@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: bulk-stk-push
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: LIPWA_API_KEY
+        sync: false
+      - key: LIPWA_CHANNEL_ID
+        sync: false
+      - key: LIPWA_CALLBACK_URL
+        sync: false
